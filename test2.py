@@ -4,6 +4,8 @@ import pickle
 import pandas as pd
 from ultralytics import YOLO
 import cvzone
+import customtkinter as ctk
+from PIL import Image, ImageTk
 
 # Global variables
 MODEL_PATH = 'yolov8s.pt'
@@ -18,6 +20,21 @@ cap = None
 polylines = []
 area_names = []
 class_list = []
+
+# Initialize CustomTkinter
+app = ctk.CTk()
+app.title("Parking Detection System")
+app.state('zoomed')  # Fullscreen
+
+# Frames
+left_frame = ctk.CTkFrame(app, width=800, corner_radius=10)
+left_frame.pack(side="left", fill="both", expand=True)
+
+right_frame = ctk.CTkFrame(app, width=400, corner_radius=10)
+right_frame.pack(side="right", fill="both", expand=True)
+
+video_label = ctk.CTkLabel(left_frame, text="", anchor="center")
+video_label.pack(fill="both", expand=True)
 
 
 def initialize_model():
@@ -80,12 +97,9 @@ def process_frame(frame, count):
     return frame
 
 
-def main():
-    """Main function to execute the parking detection pipeline."""
-    initialize_model()
-    load_files()
-    open_video()
-
+def display_video():
+    """Display the video on the left frame."""
+    global cap
     count = 0
     while True:
         ret, frame = cap.read()
@@ -96,13 +110,28 @@ def main():
         count += 1
         processed_frame = process_frame(frame, count)
         if processed_frame is not None:
-            cv2.imshow('FRAME', processed_frame)
+            # Convert frame to RGB for displaying in Tkinter
+            processed_frame = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(processed_frame)
+            imgtk = ImageTk.PhotoImage(image=img)
+            video_label.imgtk = imgtk
+            video_label.configure(image=imgtk)
+
+        app.update_idletasks()
+        app.update()
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
     cap.release()
-    cv2.destroyAllWindows()
+
+
+def main():
+    """Main function to execute the parking detection pipeline."""
+    initialize_model()
+    load_files()
+    open_video()
+    display_video()
 
 
 if __name__ == "__main__":
