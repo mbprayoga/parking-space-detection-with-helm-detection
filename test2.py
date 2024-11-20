@@ -36,6 +36,10 @@ right_frame.pack(side="right", fill="both", expand=True)
 video_label = ctk.CTkLabel(left_frame, text="", anchor="center")
 video_label.pack(fill="both", expand=True)
 
+# Indicators for parking areas
+parking_status = {}  # Dictionary to store status for each parking area
+area_labels = {}  # Store labels for updating status dynamically
+
 
 def initialize_model():
     """Initialize the YOLO model."""
@@ -52,6 +56,14 @@ def load_files():
     
     with open(COCO_CLASSES_FILE, "r") as f:
         class_list = f.read().split("\n")
+
+    # Initialize parking area status
+    for area_name in area_names:
+        parking_status[area_name] = "Empty"
+        area_labels[area_name] = ctk.CTkLabel(
+            right_frame, text=f"{area_name}: Empty", fg_color="green", width=200, height=30, corner_radius=8
+        )
+        area_labels[area_name].pack(pady=5, padx=10)
 
 
 def open_video():
@@ -85,14 +97,30 @@ def process_frame(frame, count):
             cars_positions.append([int((x1 + x2) / 2), int((y1 + y2) / 2)])
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
 
+    # Update parking area status
     for i, polyline in enumerate(polylines):
-        cv2.polylines(frame, [polyline], True, (0, 255, 0), 2)
-        cvzone.putTextRect(frame, f'{area_names[i]}', tuple(polyline[0]), 1, 1)
-
+        is_filled = False
         for cx, cy in cars_positions:
             if cv2.pointPolygonTest(polyline, (cx, cy), False) >= 0:
-                cv2.circle(frame, (cx, cy), 5, (255, 0, 0), -1)
-                cv2.polylines(frame, [polyline], True, (0, 0, 255), 2)
+                is_filled = True
+                break
+
+        # Update the label and status
+        if is_filled:
+            parking_status[area_names[i]] = "Filled"
+            area_labels[area_names[i]].configure(
+                text=f"{area_names[i]}: Filled", fg_color="red"
+            )
+        else:
+            parking_status[area_names[i]] = "Empty"
+            area_labels[area_names[i]].configure(
+                text=f"{area_names[i]}: Empty", fg_color="green"
+            )
+
+        # Draw polyline on the frame
+        color = (0, 0, 255) if is_filled else (0, 255, 0)
+        cv2.polylines(frame, [polyline], True, color, 2)
+        cvzone.putTextRect(frame, f'{area_names[i]}', tuple(polyline[0]), 1, 1)
 
     return frame
 
