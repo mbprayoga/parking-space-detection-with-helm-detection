@@ -9,7 +9,7 @@ from PIL import Image, ImageTk
 
 # Global variables
 MODEL_PATH = 'yolov8s.pt'
-VIDEO_PATH = 'easy1.mp4'
+VIDEO_PATH = 'test-park.mp4'
 PICKLE_FILE = 'parkingsegment'
 COCO_CLASSES_FILE = 'coco.txt'
 FRAME_SIZE = (1020, 500)
@@ -74,7 +74,7 @@ def open_video():
 
 def process_frame(frame, count):
     """
-    Process each frame for car detection and check if the car is inside the parking area.
+    Process each frame for motorcycle detection and check if the motorcycle is inside the parking area.
     
     Args:
         frame (np.array): The current video frame.
@@ -86,21 +86,21 @@ def process_frame(frame, count):
     frame = cv2.resize(frame, FRAME_SIZE)
     results = model.predict(frame)
     detections = pd.DataFrame(results[0].boxes.data).astype("float")
-    cars_positions = []
+    motorcycles_positions = []
 
     for _, row in detections.iterrows():
         x1, y1, x2, y2 = map(int, row[:4])
         class_id = int(row[5])
         class_name = class_list[class_id]
 
-        if 'car' in class_name:
-            cars_positions.append([int((x1 + x2) / 2), int((y1 + y2) / 2)])
+        if 'motorcycle' in class_name:
+            motorcycles_positions.append([int((x1 + x2) / 2), int((y1 + y2) / 2)])
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
 
     # Update parking area status
     for i, polyline in enumerate(polylines):
         is_filled = False
-        for cx, cy in cars_positions:
+        for cx, cy in motorcycles_positions:
             if cv2.pointPolygonTest(polyline, (cx, cy), False) >= 0:
                 is_filled = True
                 break
