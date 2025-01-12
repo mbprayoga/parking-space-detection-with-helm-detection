@@ -3,25 +3,22 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 import serial
-import json
 import os
+from werkzeug.utils import secure_filename
 
 class Detect:
     def __init__(self, onnx_model, confidence_thres, iou_thres, serial_port, serial_baudrate):
         self.onnx_model = onnx_model
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
-        self.classes = ["Helm", "Mobil", "Motor", "No-Helm", "Pejalan-Kaki", "Pengendara-Motor"]
+        self.classes = ['biker', 'helmeted', 'person', 'unhelmeted']
         self.color_palette = np.random.uniform(0, 255, size=(len(self.classes), 3))
 
-        # Serial setup with error handling
         self.serial_connection = None
         try:
-            # Try to open the serial port
             self.serial_connection = serial.Serial(serial_port, serial_baudrate, timeout=1)
             print(f"Connected to serial port {serial_port} at {serial_baudrate} baud.")
         except serial.SerialException as e:
-            # Handle cases where serial port cannot be opened (e.g., permission denied)
             print(f"Error connecting to serial port: {e}")
             exit(1)
 
@@ -30,32 +27,29 @@ class Detect:
         img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = cv2.resize(img, (640, 640))
         image_data = img / 255.0
-        image_data = np.transpose(image_data, (2, 0, 1))  # Channel first
-        image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
-        return image_data
+        image_data = np.transpose(image_data, (2, 0, 1))
+        return np.expand_dims(image_data, axis=0).astype(np.float32)
 
     def postprocess(self, output):
         outputs = np.transpose(np.squeeze(output[0]))
-        rows = outputs.shape[0]
-        detections = []
         x_factor, y_factor = self.img_width / 640, self.img_height / 640
 
-        for i in range(rows):
-            classes_scores = outputs[i][4:]
-            max_score = np.amax(classes_scores)
-            if max_score >= self.confidence_thres:
-                class_id = np.argmax(classes_scores)
-                x, y, w, h = outputs[i][0], outputs[i][1], outputs[i][2], outputs[i][3]
-                left = int((x - w / 2) * x_factor)
-                top = int((y - h / 2) * y_factor)
-                width = int(w * x_factor)
-                height = int(h * y_factor)
-                detections.append({
-                    "class_id": class_id,
-                    "class_name": self.classes[class_id],
-                    "score": float(max_score),
-                    "box": [left, top, width, height]
-                })
+        detections = [
+            {
+                "class_id": class_id,
+                "class_name": self.classes[class_id],
+                "score": float(max_score),
+                "box": [
+                    int((x - w / 2) * x_factor),
+                    int((y - h / 2) * y_factor),
+                    int(w * x_factor),
+                    int(h * y_factor)
+                ]
+            }
+            for x, y, w, h, *classes_scores in outputs
+            if (max_score := np.amax(classes_scores)) >= self.confidence_thres
+            if (class_id := np.argmax(classes_scores)) is not None
+        ]
 
         return detections
 
@@ -71,11 +65,27 @@ class Detect:
         ]
         try:
             if self.serial_connection:
-                # Sending JSON data via serial connection
-                self.serial_connection.write(json.dumps(message).encode('utf-8') + b'\n')
-                print(f"Detections sent via Serial: {message}")
+                send_value = '0'
+                detected_classes = {det["class_name"] for det in detections}
+                if "unhelmeted" in detected_classes:
+                    send_value = '0'
+                elif "helmeted" in detected_classes and "biker" in detected_classes:
+                    send_value = '1'
+                self.serial_connection.write(send_value.encode('utf-8') + b'\n')
+                print(f"Value sent: {send_value}")
         except Exception as e:
             print(f"Error sending data over serial: {e}")
+
+    def draw_bounding_boxes(self, frame, detections):
+        for det in detections:
+            box = det["box"]
+            class_id = det["class_id"]
+            class_name = det["class_name"]
+            score = det["score"]
+            color = self.color_palette[class_id]
+
+            cv2.rectangle(frame, (box[0], box[1]), (box[0] + box[2], box[1] + box[3]), color, 2)
+            cv2.putText(frame, f"{class_name} {score:.2f}", (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
     def process_image(self, image_path):
         if not os.path.isfile(image_path):
@@ -96,16 +106,23 @@ class Detect:
             outputs = session.run(None, {session.get_inputs()[0].name: img_data})
             detections = self.postprocess(outputs)
             self.send_detections_serial(detections)
+
+            self.draw_bounding_boxes(frame, detections)
+
+            output_image_path = os.path.join("detect/image", secure_filename(os.path.basename(image_path)))
+            cv2.imwrite(output_image_path, frame)
+            print(f"Processed image saved to {output_image_path}")
+
         except Exception as e:
             print(f"Error during model inference: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="best.onnx", help="Input your ONNX model.")
+    parser.add_argument("--model", type=str, default="models/yolov8/best.onnx", help="Input your ONNX model.")
     parser.add_argument("--conf-thres", type=float, default=0.5, help="Confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.5, help="NMS IoU threshold")
     parser.add_argument("--image", type=str, required=True, help="Path to the input image.")
-    parser.add_argument("--serial-port", type=str, default="COM15", help="Serial port for communication.")
+    parser.add_argument("--serial-port", type=str, default="COM8", help="Serial port for communication.")
     parser.add_argument("--serial-baudrate", type=int, default=115200, help="Serial baud rate.")
     args = parser.parse_args()
 

@@ -8,7 +8,7 @@ class Detect:
         self.onnx_model = onnx_model
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
-        self.classes = ["Helm", "Mobil", "Motor", "No-Helm", "Pejalan-Kaki", "Pengendara-Motor"]
+        self.classes = ['biker', 'helmeted', 'person', 'unhelmeted']
         self.color_palette = np.random.uniform(0, 255, size=(len(self.classes), 3))
 
     def draw_detections(self, img, box, score, class_id):
@@ -27,10 +27,9 @@ class Detect:
         self.img_height, self.img_width = frame.shape[:2]
         img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = cv2.resize(img, (640, 640))
-        image_data = np.array(img) / 255.0
+        image_data = img / 255.0
         image_data = np.transpose(image_data, (2, 0, 1))  # Channel first
-        image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
-        return image_data
+        return np.expand_dims(image_data, axis=0).astype(np.float32)
 
     def postprocess(self, frame, output):
         outputs = np.transpose(np.squeeze(output[0]))
@@ -78,7 +77,7 @@ class Detect:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="best.onnx", help="Input your ONNX model.")
+    parser.add_argument("--model", type=str, default="models/yolov8/best.onnx", help="Input your ONNX model.")
     parser.add_argument("--conf-thres", type=float, default=0.5, help="Confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.5, help="NMS IoU threshold")
     parser.add_argument("--source", type=int, default=0, help="Camera source (default is 0).")
