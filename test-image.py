@@ -31,25 +31,38 @@ class Detect:
         return np.expand_dims(image_data, axis=0).astype(np.float32)
 
     def postprocess(self, output):
-        outputs = np.transpose(np.squeeze(output[0]))
+        outputs = np.squeeze(output[0]) 
         x_factor, y_factor = self.img_width / 640, self.img_height / 640
 
-        detections = [
-            {
-                "class_id": class_id,
-                "class_name": self.classes[class_id],
-                "score": float(max_score),
-                "box": [
-                    int((x - w / 2) * x_factor),
-                    int((y - h / 2) * y_factor),
-                    int(w * x_factor),
-                    int(h * y_factor)
-                ]
-            }
-            for x, y, w, h, *classes_scores in outputs
-            if (max_score := np.amax(classes_scores)) >= self.confidence_thres
-            if (class_id := np.argmax(classes_scores)) is not None
-        ]
+        detections = []
+        for detection in outputs.T:  # Transpose to iterate over detections
+            x, y, w, h = detection[:4]
+            classes_scores = detection[4:]
+            max_score = np.amax(classes_scores)
+            class_id = np.argmax(classes_scores)
+            if max_score >= self.confidence_thres:
+                detections.append({
+                    "class_id": class_id,
+                    "class_name": self.classes[class_id],
+                    "score": float(max_score),
+                    "box": [
+                        int((x - w / 2) * x_factor),
+                        int((y - h / 2) * y_factor),
+                        int(w * x_factor),
+                        int(h * y_factor)
+                    ]
+                })
+
+        if len(detections) > 0:
+            final_detections = []
+            for class_id in range(len(self.classes)):
+                class_detections = [det for det in detections if det["class_id"] == class_id]
+                if class_detections:
+                    boxes = np.array([det["box"] for det in class_detections])
+                    scores = np.array([det["score"] for det in class_detections])
+                    indices = cv2.dnn.NMSBoxes(boxes.tolist(), scores.tolist(), self.confidence_thres, self.iou_thres)
+                    final_detections.extend([class_detections[i] for i in indices.flatten()])
+            detections = final_detections
 
         return detections
 
@@ -104,6 +117,9 @@ class Detect:
                 providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
             )
             outputs = session.run(None, {session.get_inputs()[0].name: img_data})
+            
+            print(f"Output shapes: {[output.shape for output in outputs]}")
+            
             detections = self.postprocess(outputs)
             self.send_detections_serial(detections)
 
@@ -118,8 +134,8 @@ class Detect:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="models/yolov8/best.onnx", help="Input your ONNX model.")
-    parser.add_argument("--conf-thres", type=float, default=0.5, help="Confidence threshold")
+    parser.add_argument("--model", type=str, default="models/yolov11/best.onnx", help="Input your ONNX model.")
+    parser.add_argument("--conf-thres", type=float, default=0.4, help="Confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.5, help="NMS IoU threshold")
     parser.add_argument("--image", type=str, required=True, help="Path to the input image.")
     parser.add_argument("--serial-port", type=str, default="COM8", help="Serial port for communication.")
