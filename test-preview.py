@@ -10,10 +10,16 @@ class Detect:
         self.iou_thres = iou_thres
         self.classes = ['biker', 'helmeted', 'person', 'unhelmeted']
         self.color_palette = np.random.uniform(0, 255, size=(len(self.classes), 3))
+        self.color_palette = {
+            'biker': (139, 0, 0),       # Biru tua
+            'helmeted': (0, 255, 0),    # Hijau
+            'person': (0, 255, 255),    # Kuning
+            'unhelmeted': (0, 0, 255)   # Merah
+        }
 
     def draw_detections(self, img, box, score, class_id):
         x1, y1, w, h = box
-        color = self.color_palette[class_id]
+        color = self.color_palette[self.classes[class_id]]
         cv2.rectangle(img, (int(x1), int(y1)), (int(x1 + w), int(y1 + h)), color, 2)
         label = f"{self.classes[class_id]}: {score:.2f}"
         (label_width, label_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
@@ -77,7 +83,7 @@ class Detect:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="models/yolov8/best.onnx", help="Input your ONNX model.")
+    parser.add_argument("--model", type=str, default="models/yolov11/v1/best.onnx", help="Input your ONNX model.")
     parser.add_argument("--conf-thres", type=float, default=0.5, help="Confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.5, help="NMS IoU threshold")
     parser.add_argument("--source", type=int, default=0, help="Camera source (default is 0).")
