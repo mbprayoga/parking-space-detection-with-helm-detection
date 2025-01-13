@@ -72,15 +72,6 @@ class Detect:
         return detections
 
     def send_detections_serial(self, detections):
-        message = [
-            {
-                "id": int(det["class_id"]),
-                "name": det["class_name"],
-                "score": det["score"],
-                "box": det["box"]
-            }
-            for det in detections
-        ]
         try:
             if self.serial_connection:
                 send_value = '0'
@@ -147,7 +138,7 @@ class Detect:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="models/yolov8/v1/best.onnx", help="Input your ONNX model.")
+    parser.add_argument("--model", type=str, default="models/yolov11/v2/best.onnx", help="Input your ONNX model.")
     parser.add_argument("--conf-thres", type=float, default=0.5, help="Confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.5, help="NMS IoU threshold")
     parser.add_argument("--image", type=str, required=True, help="Path to the input image.")
