@@ -122,23 +122,31 @@ class Detect:
             )
             outputs = session.run(None, {session.get_inputs()[0].name: img_data})
             
-            # print(f"Output shapes: {[output.shape for output in outputs]}")
-            
             detections = self.postprocess(outputs)
             self.send_detections_serial(detections)
 
             self.draw_bounding_boxes(frame, detections)
 
-            output_image_path = os.path.join("detect/image", secure_filename(os.path.basename(image_path)))
+            # Tentukan folder berdasarkan deteksi
+            folder = "detect/unhelmeted" if any(det["class_name"] == "unhelmeted" for det in detections) else "detect/helmeted"
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+
+            # Tentukan nama file yang dimulai dari 1.jpg dan seterusnya
+            file_index = 1
+            while any(os.path.exists(os.path.join(folder, f"{file_index}.{ext}")) for ext in ["jpg", "jpeg", "png"]):
+                file_index += 1
+            output_image_path = os.path.join(folder, f"{file_index}{os.path.splitext(image_path)[1]}")
+
             cv2.imwrite(output_image_path, frame)
-            # print(f"Processed image saved to {output_image_path}")
+            print(f"Processed image saved to {output_image_path}")
 
         except Exception as e:
             print(f"Error during model inference: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="models/yolov11/v2/best.onnx", help="Input your ONNX model.")
+    parser.add_argument("--model", type=str, default="models/yolov8/v3/best.onnx", help="Input your ONNX model.")
     parser.add_argument("--conf-thres", type=float, default=0.5, help="Confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.5, help="NMS IoU threshold")
     parser.add_argument("--image", type=str, required=True, help="Path to the input image.")

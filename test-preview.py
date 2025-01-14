@@ -83,7 +83,7 @@ class Detect:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="models/yolov8/v2/best.onnx", help="Input your ONNX model.")
+    parser.add_argument("--model", type=str, default="models/yolov8/v3/best.onnx", help="Input your ONNX model.")
     parser.add_argument("--conf-thres", type=float, default=0.5, help="Confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.5, help="NMS IoU threshold")
     parser.add_argument("--source", type=int, default=0, help="Camera source (default is 0).")
