@@ -2,20 +2,45 @@ import argparse
 import cv2
 import numpy as np
 import onnxruntime as ort
+import serial
+import threading
+import time
+import os
 
 class Detect:
-    def __init__(self, onnx_model, confidence_thres, iou_thres):
+    def __init__(self, onnx_model, confidence_thres, iou_thres, serial_port, serial_baudrate):
         self.onnx_model = onnx_model
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
         self.classes = ['biker', 'helmeted', 'person', 'unhelmeted']
-        self.color_palette = np.random.uniform(0, 255, size=(len(self.classes), 3))
         self.color_palette = {
             'biker': (139, 0, 0),       # Biru tua
             'helmeted': (0, 255, 0),    # Hijau
             'person': (0, 255, 255),    # Kuning
             'unhelmeted': (0, 0, 255)   # Merah
         }
+
+        self.serial_connection = None
+        try:
+            self.serial_connection = serial.Serial(serial_port, serial_baudrate, timeout=1)
+            print(f"Connected to serial port {serial_port} at {serial_baudrate} baud.")
+        except serial.SerialException as e:
+            print(f"Error connecting to serial port: {e}")
+            exit(1)
+
+        self.session = ort.InferenceSession(self.onnx_model, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+        self.warm_up_model()
+        self.last_capture_time = 0
+
+        # Ensure the capture directory exists
+        self.capture_dir = "detect"
+        if not os.path.exists(self.capture_dir):
+            os.makedirs(self.capture_dir)
+
+    def warm_up_model(self):
+        dummy_input = np.random.rand(1, 3, 640, 640).astype(np.float32)
+        self.session.run(None, {self.session.get_inputs()[0].name: dummy_input})
+        print("Model warmed up.")
 
     def draw_detections(self, img, box, score, class_id):
         x1, y1, w, h = box
@@ -34,7 +59,7 @@ class Detect:
         img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = cv2.resize(img, (640, 640))
         image_data = img / 255.0
-        image_data = np.transpose(image_data, (2, 0, 1))  # Channel first
+        image_data = np.transpose(image_data, (2, 0, 1))
         return np.expand_dims(image_data, axis=0).astype(np.float32)
 
     def postprocess(self, frame, output):
@@ -42,6 +67,7 @@ class Detect:
         rows = outputs.shape[0]
         boxes, scores, class_ids = [], [], []
         x_factor, y_factor = self.img_width / 640, self.img_height / 640
+        detections = []
         for i in range(rows):
             classes_scores = outputs[i][4:]
             max_score = np.amax(classes_scores)
@@ -55,38 +81,80 @@ class Detect:
                 class_ids.append(class_id)
                 scores.append(max_score)
                 boxes.append([left, top, width, height])
+                detections.append({
+                    "box": [left, top, width, height],
+                    "score": max_score,
+                    "class_id": class_id,
+                    "class_name": self.classes[class_id]
+                })
         indices = cv2.dnn.NMSBoxes(boxes, scores, self.confidence_thres, self.iou_thres)
-        if len(indices) > 0:  # Check if there are any valid indices
+        if len(indices) > 0:
             for i in indices.flatten():
                 box, score, class_id = boxes[i], scores[i], class_ids[i]
                 self.draw_detections(frame, box, score, class_id)
-        return frame
+        return frame, detections
 
-    def main(self):
-        session = ort.InferenceSession(self.onnx_model, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-        cap = cv2.VideoCapture(args.source)  # Use source from argparse
+    def send_detections_serial(self, detections, frame):
+        try:
+            if self.serial_connection:
+                detected_classes = {det["class_name"] for det in detections}
+                if "person" in detected_classes or "biker" in detected_classes:
+                    current_time = time.time()
+                    if current_time - self.last_capture_time >= 5:
+                        self.last_capture_time = current_time
+                        timestamp = time.strftime("%Y%m%d-%H%M%S")
+                        filename = os.path.join(self.capture_dir, f"capture_{timestamp}.jpg")
+                        cv2.imwrite(filename, frame)
+                        print(f"Image saved: {filename}")
+
+                        # Send value to serial after saving the image
+                        send_value = '1' if "unhelmeted" in detected_classes else '0'
+                        self.serial_connection.write(send_value.encode('utf-8') + b'\n')
+                        print(f"Value sent: {send_value}")
+
+        except Exception as e:
+            print(f"Error sending data over serial: {e}")
+
+    def capture_and_process(self, source):
+        cap = cv2.VideoCapture(source)
         if not cap.isOpened():
-            print("Error: Cannot open camera.")
+            print(f"Error: Could not open video capture source {source}.")
             return
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            img_data = self.preprocess(frame)
-            outputs = session.run(None, {session.get_inputs()[0].name: img_data})
-            output_frame = self.postprocess(frame, outputs)
-            cv2.imshow("Output", output_frame)
-            if cv2.waitKey(1) & 0xFF == ord('x'):
-                break
-        cap.release()
-        cv2.destroyAllWindows()
+
+        def process_frame():
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    print("Error: Could not read frame.")
+                    break
+
+                img_data = self.preprocess(frame)
+                try:
+                    outputs = self.session.run(None, {self.session.get_inputs()[0].name: img_data})
+                    output_frame, detections = self.postprocess(frame, outputs)
+                    self.send_detections_serial(detections, frame)
+                    cv2.imshow('Detection', output_frame)
+
+                    if cv2.waitKey(1) & 0xFF == ord('x'):
+                        break
+
+                except Exception as e:
+                    print(f"Error during model inference: {e}")
+
+            cap.release()
+            cv2.destroyAllWindows()
+
+        threading.Thread(target=process_frame).start()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="models/yolov8/v3/best.onnx", help="Input your ONNX model.")
     parser.add_argument("--conf-thres", type=float, default=0.5, help="Confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.5, help="NMS IoU threshold")
-    parser.add_argument("--source", type=int, default=0, help="Camera source (default is 0).")
+    parser.add_argument("--serial-port", type=str, default="COM8", help="Serial port for communication.")
+    parser.add_argument("--serial-baudrate", type=int, default=115200, help="Serial baud rate.")
+    parser.add_argument("--source", type=int, default=0, help="Source of the video feed (default is 0 for webcam).")
     args = parser.parse_args()
-    detection = Detect(args.model, args.conf_thres, args.iou_thres)
-    detection.main()
+
+    detection = Detect(args.model, args.conf_thres, args.iou_thres, args.serial_port, args.serial_baudrate)
+    detection.capture_and_process(args.source)

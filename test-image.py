@@ -4,7 +4,6 @@ import numpy as np
 import onnxruntime as ort
 import serial
 import os
-from werkzeug.utils import secure_filename
 
 class Detect:
     def __init__(self, onnx_model, confidence_thres, iou_thres, serial_port, serial_baudrate):
@@ -13,10 +12,10 @@ class Detect:
         self.iou_thres = iou_thres
         self.classes = ['biker', 'helmeted', 'person', 'unhelmeted']
         self.color_palette = {
-            'biker': (139, 0, 0),       # Biru tua
-            'helmeted': (0, 255, 0),    # Hijau
-            'person': (0, 255, 255),    # Kuning
-            'unhelmeted': (0, 0, 255)   # Merah
+            'biker': (139, 0, 0),
+            'helmeted': (0, 255, 0),
+            'person': (0, 255, 255),
+            'unhelmeted': (0, 0, 255)
         }
 
         self.serial_connection = None
@@ -127,12 +126,10 @@ class Detect:
 
             self.draw_bounding_boxes(frame, detections)
 
-            # Tentukan folder berdasarkan deteksi
             folder = "detect/unhelmeted" if any(det["class_name"] == "unhelmeted" for det in detections) else "detect/helmeted"
             if not os.path.exists(folder):
                 os.makedirs(folder)
 
-            # Tentukan nama file yang dimulai dari 1.jpg dan seterusnya
             file_index = 1
             while any(os.path.exists(os.path.join(folder, f"{file_index}.{ext}")) for ext in ["jpg", "jpeg", "png"]):
                 file_index += 1
