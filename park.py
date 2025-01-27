@@ -4,6 +4,7 @@ import pandas as pd
 from ultralytics import YOLO
 import cvzone
 import logging
+import threading
 
 class ParkingDetectionModel:
     def __init__(self):
@@ -40,10 +41,6 @@ class ParkingDetectionModel:
         """Open the video file for reading."""
         self.cap = cv2.VideoCapture(self.video_path)
 
-    def reset_video(self):
-        """Reset the video to the first frame."""
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
     def process_frame(self, frame):
         """Process a video frame and update parking area statuses."""
         frame = cv2.resize(frame, self.frame_size)
@@ -77,12 +74,11 @@ class ParkingDetectionModel:
 
         return frame
 
-    def run(self):
-        """Read a video frame, process it, and return the frame and parking statuses."""
+    def run(self, update_callback):
+        """Read a video frame, process it, and call the update callback."""
         ret, frame = self.cap.read()
-        if not ret:
-            self.reset_video()
-            return None, self.parking_status
 
         processed_frame = self.process_frame(frame)
-        return processed_frame, self.parking_status
+        update_callback(processed_frame, self.parking_status)
+        self.cap.release()
+        

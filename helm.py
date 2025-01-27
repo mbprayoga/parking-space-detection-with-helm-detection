@@ -2,19 +2,21 @@ import argparse
 import cv2
 import numpy as np
 import onnxruntime as ort
+import threading
 
 class HelmetDetection:
     def __init__(self, onnx_model, confidence_thres, iou_thres):
         self.onnx_model = onnx_model
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
+        self._stop_event = threading.Event()
 
         # Load the class names
-        self.classes = ["Helm", "Mobil", "Motor", "No-Helm", "Pejalan-Kaki", "Pengendara-Motor"]
+        self.classes = ['biker', 'helmeted', 'person', 'unhelmeted']
 
         # Generate a color palette for the classes
         self.color_palette = np.random.uniform(0, 255, size=(len(self.classes), 3))
-
+        
     def draw_detections(self, img, box, score, class_id):
         """Draws bounding boxes and labels on the input image based on the detected objects."""
         x1, y1, w, h = box
@@ -45,6 +47,8 @@ class HelmetDetection:
         x_factor = self.img_width / 640
         y_factor = self.img_height / 480
 
+        detection_results = []
+        
         for i in range(rows):
             classes_scores = outputs[i][4:]
             max_score = np.amax(classes_scores)
@@ -58,6 +62,7 @@ class HelmetDetection:
                 class_ids.append(class_id)
                 scores.append(max_score)
                 boxes.append([left, top, width, height])
+                detection_results.append({"class_name": self.classes[class_id]})
 
         indices = cv2.dnn.NMSBoxes(boxes, scores, self.confidence_thres, self.iou_thres)
         for i in indices:
@@ -66,21 +71,26 @@ class HelmetDetection:
             class_id = class_ids[i]
             self.draw_detections(frame, box, score, class_id)
 
-        return frame
+        return frame, detection_results
 
-    def run(self):
-        """Run helmet detection on the provided video."""
-        session = ort.InferenceSession(self.onnx_model, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-        cap = cv2.VideoCapture('test-helm.mp4')
+    def run(self, update_callback):
+        """Run helmet detection on the provided video and call the update callback."""
+        session = ort.InferenceSession(self.onnx_model, providers=["AzureExecutionProvider", "CPUExecutionProvider"])
+        cap = cv2.VideoCapture(0)
 
-        while True:
+        while not self._stop_event.is_set():
             ret, frame = cap.read()
             if not ret:
                 break
 
             img_data = self.preprocess(frame)
             outputs = session.run(None, {session.get_inputs()[0].name: img_data})
-            output_frame = self.postprocess(frame, outputs)
-            return output_frame
+            output_frame, detection_results = self.postprocess(frame, outputs)
+            update_callback(output_frame, detection_results)
+            
+            
 
         cap.release()
+
+    def stop(self):
+        self._stop_event.set()
