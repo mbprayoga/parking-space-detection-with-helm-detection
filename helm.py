@@ -3,13 +3,23 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 import threading
+import serial
 
 class HelmetDetection:
     def __init__(self, onnx_model, confidence_thres, iou_thres):
         self.onnx_model = onnx_model
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
-        self._stop_event = threading.Event()
+        
+        self.serial_connection = None
+        self.serial_port = "COM8"
+        self.serial_baudrate = 115200
+        try:
+            self.serial_connection = serial.Serial(self.serial_port, self.serial_baudrate, timeout=1)
+            print(f"Connected to serial port {serial_port} at {serial_baudrate} baud.")
+        except serial.SerialException as e:
+            print(f"Error connecting to serial port: {e}")
+            exit(1)
 
         # Load the class names
         self.classes = ['biker', 'helmeted', 'person', 'unhelmeted']
@@ -73,12 +83,26 @@ class HelmetDetection:
 
         return frame, detection_results
 
+    def send_detections_serial(self, detections):
+        """Send the detected objects to a serial connection."""
+        try:
+            if self.serial_connection:
+                detected_classes = {det["class_name"] for det in detections}
+                if "person" in detected_classes or "biker" in detected_classes:
+                    current_time = time.time()
+                    if current_time - self.last_capture_time >= 5:
+                        self.last_capture_time = current_time
+                        self.serial_connection.write(b"1")
+                        self.serial_connection.flush()
+        except Exception as e:
+            print(f"Error sending detections: {e}")
+    
     def run(self, update_callback):
         """Run helmet detection on the provided video and call the update callback."""
         session = ort.InferenceSession(self.onnx_model, providers=["AzureExecutionProvider", "CPUExecutionProvider"])
         cap = cv2.VideoCapture(0)
 
-        while not self._stop_event.is_set():
+        while True:
             ret, frame = cap.read()
             if not ret:
                 break
@@ -87,10 +111,8 @@ class HelmetDetection:
             outputs = session.run(None, {session.get_inputs()[0].name: img_data})
             output_frame, detection_results = self.postprocess(frame, outputs)
             update_callback(output_frame, detection_results)
+            send_detections_serial(self, detection_results)
             
             
 
         cap.release()
-
-    def stop(self):
-        self._stop_event.set()
