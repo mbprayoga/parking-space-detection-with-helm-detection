@@ -1,9 +1,9 @@
-import argparse
 import cv2
 import numpy as np
 import onnxruntime as ort
 import threading
 import serial
+import time
 
 class HelmetDetection:
     def __init__(self, onnx_model, confidence_thres, iou_thres):
@@ -16,7 +16,7 @@ class HelmetDetection:
         self.serial_baudrate = 115200
         try:
             self.serial_connection = serial.Serial(self.serial_port, self.serial_baudrate, timeout=1)
-            print(f"Connected to serial port {serial_port} at {serial_baudrate} baud.")
+            print(f"Connected to serial port {self.serial_port} at {self.serial_baudrate} baud.")
         except serial.SerialException as e:
             print(f"Error connecting to serial port: {e}")
             exit(1)
@@ -25,14 +25,24 @@ class HelmetDetection:
         self.classes = ['biker', 'helmeted', 'person', 'unhelmeted']
 
         # Generate a color palette for the classes
-        self.color_palette = np.random.uniform(0, 255, size=(len(self.classes), 3))
+        self.color_palette = {
+            'biker': (225, 206, 128),
+            'helmeted': (0, 255, 0),
+            'person': (0, 255, 255),
+            'unhelmeted': (0, 0, 255)
+        }
+        
+        self.last_capture_time = time.time()
+        self.detection_results = []
+        self.lock = threading.Lock()
         
     def draw_detections(self, img, box, score, class_id):
         """Draws bounding boxes and labels on the input image based on the detected objects."""
         x1, y1, w, h = box
-        color = self.color_palette[class_id]
+        class_name = self.classes[class_id]
+        color = self.color_palette[class_name]
         cv2.rectangle(img, (int(x1), int(y1)), (int(x1 + w), int(y1 + h)), color, 2)
-        label = f"{self.classes[class_id]}: {score:.2f}"
+        label = f"{class_name}: {score:.2f}"
         (label_width, label_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         label_x = x1
         label_y = y1 - 10 if y1 - 10 > label_height else y1 + 10
@@ -83,24 +93,32 @@ class HelmetDetection:
 
         return frame, detection_results
 
-    def send_detections_serial(self, detections):
+    def send_detections_serial(self):
         """Send the detected objects to a serial connection."""
-        try:
-            if self.serial_connection:
-                detected_classes = {det["class_name"] for det in detections}
-                if "person" in detected_classes or "biker" in detected_classes:
-                    current_time = time.time()
-                    if current_time - self.last_capture_time >= 5:
-                        self.last_capture_time = current_time
+        while True:
+            try:
+                with self.lock:
+                    detections = self.detection_results
+                if self.serial_connection:
+                    detected_classes = {det["class_name"] for det in detections}
+                    if "biker" in detected_classes and "helmeted" in detected_classes:
                         self.serial_connection.write(b"1")
-                        self.serial_connection.flush()
-        except Exception as e:
-            print(f"Error sending detections: {e}")
+                    else:
+                        self.serial_connection.write(b"0")
+                    self.serial_connection.flush()
+                time.sleep(1)
+            except Exception as e:
+                print(f"Error sending detections: {e}")
     
     def run(self, update_callback):
         """Run helmet detection on the provided video and call the update callback."""
         session = ort.InferenceSession(self.onnx_model, providers=["AzureExecutionProvider", "CPUExecutionProvider"])
         cap = cv2.VideoCapture(0)
+
+        # Start the serial sending thread
+        serial_thread = threading.Thread(target=self.send_detections_serial)
+        serial_thread.daemon = True
+        serial_thread.start()
 
         while True:
             ret, frame = cap.read()
@@ -111,8 +129,8 @@ class HelmetDetection:
             outputs = session.run(None, {session.get_inputs()[0].name: img_data})
             output_frame, detection_results = self.postprocess(frame, outputs)
             update_callback(output_frame, detection_results)
-            send_detections_serial(self, detection_results)
             
-            
+            with self.lock:
+                self.detection_results = detection_results
 
         cap.release()
