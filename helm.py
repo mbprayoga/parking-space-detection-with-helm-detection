@@ -22,14 +22,14 @@ class HelmetDetection:
             exit(1)
 
         # Load the class names
-        self.classes = ['biker', 'helmeted', 'person', 'unhelmeted']
+        self.classes = ['helm', 'pejalan', 'pemotor', 'tanpa-helm']
 
         # Generate a color palette for the classes
         self.color_palette = {
-            'biker': (225, 206, 128),
-            'helmeted': (0, 255, 0),
-            'person': (0, 255, 255),
-            'unhelmeted': (0, 0, 255)
+            'pemotor': (225, 206, 128),
+            'helm': (0, 255, 0),
+            'pejalan': (0, 255, 255),
+            'tanpa-helm': (0, 0, 255)
         }
         
         self.last_capture_time = time.time()
@@ -112,7 +112,7 @@ class HelmetDetection:
     
     def run(self, update_callback):
         """Run helmet detection on the provided video and call the update callback."""
-        session = ort.InferenceSession(self.onnx_model, providers=["AzureExecutionProvider", "CPUExecutionProvider"])
+        session = ort.InferenceSession(self.onnx_model)
         cap = cv2.VideoCapture(0)
 
         # Start the serial sending thread
