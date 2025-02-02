@@ -36,10 +36,6 @@ class ParkingDetectionModel:
         for area_name in self.area_names:
             self.parking_status[area_name] = "Empty"
 
-    def open_video(self):
-        """Open the video file for reading."""
-        self.cap = cv2.VideoCapture(self.video_path)
-
     def process_frame(self, frame):
         """Process a video frame and update parking area statuses."""
         frame = cv2.resize(frame, self.frame_size)

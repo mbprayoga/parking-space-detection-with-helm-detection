@@ -11,15 +11,15 @@ class HelmetDetection:
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
         
-        self.serial_connection = None
-        self.serial_port = "COM8"
-        self.serial_baudrate = 115200
-        try:
-            self.serial_connection = serial.Serial(self.serial_port, self.serial_baudrate, timeout=1)
-            print(f"Connected to serial port {self.serial_port} at {self.serial_baudrate} baud.")
-        except serial.SerialException as e:
-            print(f"Error connecting to serial port: {e}")
-            exit(1)
+        # self.serial_connection = None
+        # self.serial_port = "COM8"
+        # self.serial_baudrate = 115200
+        # try:
+        #     self.serial_connection = serial.Serial(self.serial_port, self.serial_baudrate, timeout=1)
+        #     print(f"Connected to serial port {self.serial_port} at {self.serial_baudrate} baud.")
+        # except serial.SerialException as e:
+        #     print(f"Error connecting to serial port: {e}")
+        #     exit(1)
 
         # Load the class names
         self.classes = ['helm', 'pejalan', 'pemotor', 'tanpa-helm']
@@ -93,32 +93,32 @@ class HelmetDetection:
 
         return frame, detection_results
 
-    def send_detections_serial(self):
-        """Send the detected objects to a serial connection."""
-        while True:
-            try:
-                with self.lock:
-                    detections = self.detection_results
-                if self.serial_connection:
-                    detected_classes = {det["class_name"] for det in detections}
-                    if "biker" in detected_classes and "helmeted" in detected_classes:
-                        self.serial_connection.write(b"1")
-                    else:
-                        self.serial_connection.write(b"0")
-                    self.serial_connection.flush()
-                time.sleep(1)
-            except Exception as e:
-                print(f"Error sending detections: {e}")
+    # def send_detections_serial(self):
+    #     """Send the detected objects to a serial connection."""
+    #     while True:
+    #         try:
+    #             with self.lock:
+    #                 detections = self.detection_results
+    #             if self.serial_connection:
+    #                 detected_classes = {det["class_name"] for det in detections}
+    #                 if "biker" in detected_classes and "helmeted" in detected_classes:
+    #                     self.serial_connection.write(b"1")
+    #                 else:
+    #                     self.serial_connection.write(b"0")
+    #                 self.serial_connection.flush()
+    #             time.sleep(1)
+    #         except Exception as e:
+    #             print(f"Error sending detections: {e}")
     
     def run(self, update_callback):
         """Run helmet detection on the provided video and call the update callback."""
         session = ort.InferenceSession(self.onnx_model)
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(1)
 
-        # Start the serial sending thread
-        serial_thread = threading.Thread(target=self.send_detections_serial)
-        serial_thread.daemon = True
-        serial_thread.start()
+        # # Start the serial sending thread
+        # serial_thread = threading.Thread(target=self.send_detections_serial)
+        # serial_thread.daemon = True
+        # serial_thread.start()
 
         while True:
             ret, frame = cap.read()
