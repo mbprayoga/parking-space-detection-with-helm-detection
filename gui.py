@@ -111,9 +111,9 @@ class ParkingDetectionGUI:
         ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(360, 240))
         
         for result in results:
-            if result['class_name'] == 'helm':
+            if result['class_name'] == 'helmeted':
                 message_label.configure(text="", fg_color="transparent")
-            elif result['class_name'] == 'tanpa-helm':
+            if result['class_name'] == 'unhelmeted':
                 message_label.configure(text="Gunakan Kelengkapan Berkendara!", text_color="#ffffff", font=("Poppins", 14, "bold"), fg_color="#ff0f0f")
         
         # Update the label with the new CTkImage object
