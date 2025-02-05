@@ -14,7 +14,6 @@ class HelmetDetection:
         self.serial_connection = None
         self.serial_port = "COM8"
         self.serial_baudrate = 115200
-        
         try:
             self.serial_connection = serial.Serial(self.serial_port, self.serial_baudrate, timeout=1)
             print(f"Connected to serial port {self.serial_port} at {self.serial_baudrate} baud.")
@@ -124,10 +123,8 @@ class HelmetDetection:
     
     def run(self, update_callback):
         """Run helmet detection on the provided video and call the update callback."""
+        session = ort.InferenceSession(self.onnx_model)
         cap = cv2.VideoCapture(0)
-
-        # Warm up the model
-        self.warm_up_model()
 
         # Start the serial sending thread
         serial_thread = threading.Thread(target=self.send_detections_serial)
