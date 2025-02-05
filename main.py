@@ -5,7 +5,7 @@ from helm import HelmetDetection
 def main():
     model_interface = ParkingDetectionModel()
 
-    helmet_model = HelmetDetection('models/yolov11/small/best.onnx', 0.5, 0.5)  
+    helmet_model = HelmetDetection('models/yolov11/nano/best.onnx', 0.5, 0.5)  
 
     gui = ParkingDetectionGUI(model_interface, helmet_model)
     
