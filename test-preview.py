@@ -12,23 +12,23 @@ class Detect:
         self.onnx_model = onnx_model
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
-        self.classes = ['biker', 'helmeted', 'person', 'unhelmeted']
+        self.classes = ['helm', 'pejalan', 'pemotor', 'tanpa-helm']
         self.color_palette = {
-            'biker': (139, 0, 0),       # Biru tua
-            'helmeted': (0, 255, 0),    # Hijau
-            'person': (0, 255, 255),    # Kuning
-            'unhelmeted': (0, 0, 255)   # Merah
+            'pemotor': (225, 206, 128),
+            'helm': (0, 255, 0),
+            'pejalan': (0, 255, 255),
+            'tanpa-helm': (0, 0, 255)
         }
 
-        self.serial_connection = None
-        try:
-            self.serial_connection = serial.Serial(serial_port, serial_baudrate, timeout=1)
-            print(f"Connected to serial port {serial_port} at {serial_baudrate} baud.")
-        except serial.SerialException as e:
-            print(f"Error connecting to serial port: {e}")
-            exit(1)
+        # self.serial_connection = None
+        # try:
+        #     self.serial_connection = serial.Serial(serial_port, serial_baudrate, timeout=1)
+        #     print(f"Connected to serial port {serial_port} at {serial_baudrate} baud.")
+        # except serial.SerialException as e:
+        #     print(f"Error connecting to serial port: {e}")
+        #     exit(1)
 
-        self.session = ort.InferenceSession(self.onnx_model, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+        self.session = ort.InferenceSession(self.onnx_model)
         self.warm_up_model()
         self.last_capture_time = 0
 
@@ -94,26 +94,26 @@ class Detect:
                 self.draw_detections(frame, box, score, class_id)
         return frame, detections
 
-    def send_detections_serial(self, detections, frame):
-        try:
-            if self.serial_connection:
-                detected_classes = {det["class_name"] for det in detections}
-                if "person" in detected_classes or "biker" in detected_classes:
-                    current_time = time.time()
-                    if current_time - self.last_capture_time >= 5:
-                        self.last_capture_time = current_time
-                        timestamp = time.strftime("%Y%m%d-%H%M%S")
-                        filename = os.path.join(self.capture_dir, f"capture_{timestamp}.jpg")
-                        cv2.imwrite(filename, frame)
-                        print(f"Image saved: {filename}")
+    # def send_detections_serial(self, detections, frame):
+    #     try:
+    #         if self.serial_connection:
+    #             detected_classes = {det["class_name"] for det in detections}
+    #             if "person" in detected_classes or "biker" in detected_classes:
+    #                 current_time = time.time()
+    #                 if current_time - self.last_capture_time >= 5:
+    #                     self.last_capture_time = current_time
+    #                     timestamp = time.strftime("%Y%m%d-%H%M%S")
+    #                     filename = os.path.join(self.capture_dir, f"capture_{timestamp}.jpg")
+    #                     cv2.imwrite(filename, frame)
+    #                     print(f"Image saved: {filename}")
 
-                        # Send value to serial after saving the image
-                        send_value = '1' if "unhelmeted" in detected_classes else '0'
-                        self.serial_connection.write(send_value.encode('utf-8') + b'\n')
-                        print(f"Value sent: {send_value}")
+    #                     # Send value to serial after saving the image
+    #                     send_value = '1' if "unhelmeted" in detected_classes else '0'
+    #                     self.serial_connection.write(send_value.encode('utf-8') + b'\n')
+    #                     print(f"Value sent: {send_value}")
 
-        except Exception as e:
-            print(f"Error sending data over serial: {e}")
+    #     except Exception as e:
+    #         print(f"Error sending data over serial: {e}")
 
     def capture_and_process(self, source):
         cap = cv2.VideoCapture(source)
@@ -132,7 +132,7 @@ class Detect:
                 try:
                     outputs = self.session.run(None, {self.session.get_inputs()[0].name: img_data})
                     output_frame, detections = self.postprocess(frame, outputs)
-                    self.send_detections_serial(detections, frame)
+                    # self.send_detections_serial(detections, frame)
                     cv2.imshow('Detection', output_frame)
 
                     if cv2.waitKey(1) & 0xFF == ord('x'):
@@ -148,7 +148,7 @@ class Detect:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="models/yolov8/v3/best.onnx", help="Input your ONNX model.")
+    parser.add_argument("--model", type=str, default="models/yolov11/nano/best.onnx", help="Input your ONNX model.")
     parser.add_argument("--conf-thres", type=float, default=0.5, help="Confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.5, help="NMS IoU threshold")
     parser.add_argument("--serial-port", type=str, default="COM8", help="Serial port for communication.")

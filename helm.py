@@ -11,15 +11,16 @@ class HelmetDetection:
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
         
-        # self.serial_connection = None
-        # self.serial_port = "COM8"
-        # self.serial_baudrate = 115200
-        # try:
-        #     self.serial_connection = serial.Serial(self.serial_port, self.serial_baudrate, timeout=1)
-        #     print(f"Connected to serial port {self.serial_port} at {self.serial_baudrate} baud.")
-        # except serial.SerialException as e:
-        #     print(f"Error connecting to serial port: {e}")
-        #     exit(1)
+        self.serial_connection = None
+        self.serial_port = "COM8"
+        self.serial_baudrate = 115200
+        
+        try:
+            self.serial_connection = serial.Serial(self.serial_port, self.serial_baudrate, timeout=1)
+            print(f"Connected to serial port {self.serial_port} at {self.serial_baudrate} baud.")
+        except serial.SerialException as e:
+            print(f"Error connecting to serial port: {e}")
+            exit(1)
 
         # Load the class names
         self.classes = ['helm', 'pejalan', 'pemotor', 'tanpa-helm']
@@ -35,6 +36,15 @@ class HelmetDetection:
         self.last_capture_time = time.time()
         self.detection_results = []
         self.lock = threading.Lock()
+        
+        # Initialize the ONNX session
+        self.session = ort.InferenceSession(self.onnx_model)
+        
+    def warm_up_model(self):
+        """Warm up the model with a dummy input."""
+        dummy_input = np.random.rand(1, 3, 640, 640).astype(np.float32)
+        self.session.run(None, {self.session.get_inputs()[0].name: dummy_input})
+        print("Model warmed up.")
         
     def draw_detections(self, img, box, score, class_id):
         """Draws bounding boxes and labels on the input image based on the detected objects."""
@@ -65,7 +75,7 @@ class HelmetDetection:
         rows = outputs.shape[0]
         boxes, scores, class_ids = [], [], []
         x_factor = self.img_width / 640
-        y_factor = self.img_height / 480
+        y_factor = self.img_height / 640
 
         detection_results = []
         
@@ -85,6 +95,8 @@ class HelmetDetection:
                 detection_results.append({"class_name": self.classes[class_id]})
 
         indices = cv2.dnn.NMSBoxes(boxes, scores, self.confidence_thres, self.iou_thres)
+        if isinstance(indices, np.ndarray):
+            indices = indices.flatten()
         for i in indices:
             box = boxes[i]
             score = scores[i]
@@ -93,32 +105,34 @@ class HelmetDetection:
 
         return frame, detection_results
 
-    # def send_detections_serial(self):
-    #     """Send the detected objects to a serial connection."""
-    #     while True:
-    #         try:
-    #             with self.lock:
-    #                 detections = self.detection_results
-    #             if self.serial_connection:
-    #                 detected_classes = {det["class_name"] for det in detections}
-    #                 if "biker" in detected_classes and "helmeted" in detected_classes:
-    #                     self.serial_connection.write(b"1")
-    #                 else:
-    #                     self.serial_connection.write(b"0")
-    #                 self.serial_connection.flush()
-    #             time.sleep(1)
-    #         except Exception as e:
-    #             print(f"Error sending detections: {e}")
+    def send_detections_serial(self):
+        """Send the detected objects to a serial connection."""
+        while True:
+            try:
+                with self.lock:
+                    detections = self.detection_results
+                if self.serial_connection:
+                    detected_classes = {det["class_name"] for det in detections}
+                    if "biker" in detected_classes and "helmeted" in detected_classes:
+                        self.serial_connection.write(b"1")
+                    else:
+                        self.serial_connection.write(b"0")
+                    self.serial_connection.flush()
+                time.sleep(1)
+            except Exception as e:
+                print(f"Error sending detections: {e}")
     
     def run(self, update_callback):
         """Run helmet detection on the provided video and call the update callback."""
-        session = ort.InferenceSession(self.onnx_model)
-        cap = cv2.VideoCapture(1)
+        cap = cv2.VideoCapture(0)
 
-        # # Start the serial sending thread
-        # serial_thread = threading.Thread(target=self.send_detections_serial)
-        # serial_thread.daemon = True
-        # serial_thread.start()
+        # Warm up the model
+        self.warm_up_model()
+
+        # Start the serial sending thread
+        serial_thread = threading.Thread(target=self.send_detections_serial)
+        serial_thread.daemon = True
+        serial_thread.start()
 
         while True:
             ret, frame = cap.read()
@@ -126,7 +140,7 @@ class HelmetDetection:
                 break
 
             img_data = self.preprocess(frame)
-            outputs = session.run(None, {session.get_inputs()[0].name: img_data})
+            outputs = self.session.run(None, {self.session.get_inputs()[0].name: img_data})
             output_frame, detection_results = self.postprocess(frame, outputs)
             update_callback(output_frame, detection_results)
             
