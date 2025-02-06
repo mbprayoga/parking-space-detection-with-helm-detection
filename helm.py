@@ -6,11 +6,10 @@ import serial
 import time
 
 class HelmetDetection:
-    def __init__(self, onnx_model, confidence_thres, iou_thres, batch_size=1):
+    def __init__(self, onnx_model, confidence_thres, iou_thres):
         self.onnx_model = onnx_model
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
-        self.batch_size = batch_size
         
         self.serial_connection = None
         self.serial_port = "COM8"
@@ -43,16 +42,22 @@ class HelmetDetection:
         
     def warm_up_model(self):
         """Warm up the model with a dummy input."""
-        dummy_input = np.random.rand(1, 3, 640, 640).astype(np.float32)  # Menggunakan batch size 1 untuk warm up
+        dummy_input = np.random.rand(1, 3, 640, 640).astype(np.float32)
         self.session.run(None, {self.session.get_inputs()[0].name: dummy_input})
         print("Model warmed up.")
-        
+
     def draw_detections(self, img, box, score, class_id):
         """Draws bounding boxes and labels on the input image based on the detected objects."""
         x1, y1, w, h = box
+        x1 = max(0, min(x1, self.img_width - 1))
+        y1 = max(0, min(y1, self.img_height - 1))
+        x2 = max(0, min(x1 + w, self.img_width - 1))
+        y2 = max(0, min(y1 + h, self.img_height - 1))
+        
         class_name = self.classes[class_id]
         color = self.color_palette[class_name]
-        cv2.rectangle(img, (int(x1), int(y1)), (int(x1 + w), int(y1 + h)), color, 2)
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        
         label = f"{class_name}: {score:.2f}"
         (label_width, label_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         label_x = x1
@@ -60,34 +65,32 @@ class HelmetDetection:
         cv2.rectangle(img, (label_x, label_y - label_height), (label_x + label_width, label_y + label_height), color, cv2.FILLED)
         cv2.putText(img, label, (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
-    def preprocess(self, frames):
-        """Preprocess the frames before feeding them into the model."""
-        preprocessed_frames = []
-        for frame in frames:
-            self.img_height, self.img_width = frame.shape[:2]
-            img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img = cv2.resize(img, (640, 640))
-            image_data = np.array(img) / 255.0
-            image_data = np.transpose(image_data, (2, 0, 1))
-            image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
-            preprocessed_frames.append(image_data)
-        return np.vstack(preprocessed_frames)
+    def preprocess(self, frame):
+        """Preprocess the frame before feeding it into the model."""
+        self.img_height, self.img_width = frame.shape[:2]
+        img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (640, 640))
+        image_data = np.array(img) / 255.0
+        image_data = np.transpose(image_data, (2, 0, 1))
+        image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
+        return image_data
 
-    def postprocess(self, frames, outputs):
+    def postprocess(self, frame, output):
         """Postprocess the model outputs."""
-        detection_results = []
-        for frame, output in zip(frames, outputs):
-            outputs = np.transpose(np.squeeze(output))
-            rows = outputs.shape[0]
-            boxes, scores, class_ids = [], [], []
-            x_factor = self.img_width / 640
-            y_factor = self.img_height / 640
+        outputs = np.transpose(np.squeeze(output[0]))
+        rows = outputs.shape[0]
+        boxes, scores, class_ids = [], [], []
+        x_factor = self.img_width / 640
+        y_factor = self.img_height / 640
 
-            for i in range(rows):
-                classes_scores = outputs[i][4:]
-                max_score = np.amax(classes_scores)
-                if max_score >= self.confidence_thres:
-                    class_id = np.argmax(classes_scores)
+        detection_results = []
+        
+        for i in range(rows):
+            classes_scores = outputs[i][4:]
+            max_score = np.amax(classes_scores)
+            if max_score >= self.confidence_thres:
+                class_id = np.argmax(classes_scores)
+                if 0 <= class_id < len(self.classes):  # Ensure class_id is within valid range
                     x, y, w, h = outputs[i][0], outputs[i][1], outputs[i][2], outputs[i][3]
                     left = int((x - w / 2) * x_factor)
                     top = int((y - h / 2) * y_factor)
@@ -97,26 +100,19 @@ class HelmetDetection:
                     scores.append(max_score)
                     boxes.append([left, top, width, height])
                     detection_results.append({"class_name": self.classes[class_id]})
+                else:
+                    print(f"Warning: class_id {class_id} is out of range. Scores: {classes_scores}")
 
-            indices = self.fast_nms(boxes, scores)
-            for i in indices:
-                box = boxes[i]
-                score = scores[i]
-                class_id = class_ids[i]
-                self.draw_detections(frame, box, score, class_id)
-
-        return frames, detection_results
-
-    def fast_nms(self, boxes, scores):
-        """Apply Fast Non-Maximum Suppression."""
-        if len(boxes) == 0:
-            return []
-        boxes = np.array(boxes)
-        scores = np.array(scores)
-        indices = cv2.dnn.NMSBoxes(boxes.tolist(), scores.tolist(), self.confidence_thres, self.iou_thres)
+        indices = cv2.dnn.NMSBoxes(boxes, scores, self.confidence_thres, self.iou_thres)
         if isinstance(indices, np.ndarray):
             indices = indices.flatten()
-        return indices
+        for i in indices:
+            box = boxes[i]
+            score = scores[i]
+            class_id = class_ids[i]
+            self.draw_detections(frame, box, score, class_id)
+
+        return frame, detection_results
 
     def send_detections_serial(self):
         """Send the detected objects to a serial connection."""
@@ -147,23 +143,18 @@ class HelmetDetection:
         serial_thread.daemon = True
         serial_thread.start()
 
-        frames = []
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
 
-            frames.append(frame)
-            if len(frames) == self.batch_size:
-                img_data = self.preprocess(frames)
-                outputs = self.session.run(None, {self.session.get_inputs()[0].name: img_data})
-                output_frames, detection_results = self.postprocess(frames, outputs)
-                for output_frame in output_frames:
-                    update_callback(output_frame, detection_results)
-                
-                with self.lock:
-                    self.detection_results = detection_results
-
-                frames = []
+            frame = cv2.resize(frame, (360, 360))
+            img_data = self.preprocess(frame)
+            outputs = self.session.run(None, {self.session.get_inputs()[0].name: img_data})
+            output_frame, detection_results = self.postprocess(frame, outputs)
+            update_callback(output_frame, detection_results)
+            
+            with self.lock:
+                self.detection_results = detection_results
 
         cap.release()
