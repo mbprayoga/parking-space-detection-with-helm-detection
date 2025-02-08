@@ -4,7 +4,6 @@ import pandas as pd
 from ultralytics import YOLO
 import cvzone
 import logging
-import threading
 
 class ParkingDetectionModel:
     def __init__(self):

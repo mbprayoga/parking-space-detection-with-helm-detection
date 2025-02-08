@@ -108,7 +108,7 @@ class ParkingDetectionGUI:
         img = Image.fromarray(frame)
         
         # Convert to CTkImage (instead of ImageTk.PhotoImage)
-        ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(360, 240))
+        ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(360, 360))
         
         for result in results:
             if result['class_name'] == 'helmeted':
