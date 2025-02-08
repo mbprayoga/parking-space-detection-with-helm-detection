@@ -11,21 +11,19 @@ class HelmetDetection:
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
         
-        self.serial_connection = None
-        self.serial_port = "COM8"
-        self.serial_baudrate = 115200
+        # self.serial_connection = None
+        # self.serial_port = "COM8"
+        # self.serial_baudrate = 115200
         
-        try:
-            self.serial_connection = serial.Serial(self.serial_port, self.serial_baudrate, timeout=1)
-            print(f"Connected to serial port {self.serial_port} at {self.serial_baudrate} baud.")
-        except serial.SerialException as e:
-            print(f"Error connecting to serial port: {e}")
-            exit(1)
+        # try:
+        #     self.serial_connection = serial.Serial(self.serial_port, self.serial_baudrate, timeout=1)
+        #     print(f"Connected to serial port {self.serial_port} at {self.serial_baudrate} baud.")
+        # except serial.SerialException as e:
+        #     print(f"Error connecting to serial port: {e}")
+        #     exit(1)
 
-        # Load the class names
         self.classes = ['helm', 'pejalan', 'pemotor', 'tanpa-helm']
 
-        # Generate a color palette for the classes
         self.color_palette = {
             'pemotor': (225, 206, 128),
             'helm': (0, 255, 0),
@@ -36,8 +34,6 @@ class HelmetDetection:
         self.last_capture_time = time.time()
         self.detection_results = []
         self.lock = threading.Lock()
-        
-        # Initialize the ONNX session
         self.session = ort.InferenceSession(self.onnx_model)
         
     def warm_up_model(self):
@@ -90,7 +86,7 @@ class HelmetDetection:
             max_score = np.amax(classes_scores)
             if max_score >= self.confidence_thres:
                 class_id = np.argmax(classes_scores)
-                if 0 <= class_id < len(self.classes):  # Ensure class_id is within valid range
+                if 0 <= class_id < len(self.classes): 
                     x, y, w, h = outputs[i][0], outputs[i][1], outputs[i][2], outputs[i][3]
                     left = int((x - w / 2) * x_factor)
                     top = int((y - h / 2) * y_factor)
@@ -133,15 +129,14 @@ class HelmetDetection:
     
     def run(self, update_callback):
         """Run helmet detection on the provided video and call the update callback."""
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(1)
 
-        # Warm up the model
         self.warm_up_model()
 
-        # Start the serial sending thread
-        serial_thread = threading.Thread(target=self.send_detections_serial)
-        serial_thread.daemon = True
-        serial_thread.start()
+        # # Start the serial sending thread
+        # serial_thread = threading.Thread(target=self.send_detections_serial)
+        # serial_thread.daemon = True
+        # serial_thread.start()
 
         while True:
             ret, frame = cap.read()
