@@ -4,44 +4,47 @@ import pandas as pd
 from ultralytics import YOLO
 import cvzone
 import logging
+import os
 
 class ParkingDetectionModel:
-    def __init__(self):
+    area_names = [] 
+
+    def __init__(self, video_path, segmentation_path):
         logging.getLogger('ultralytics').setLevel(logging.CRITICAL)
         
-        self.model = YOLO('yolov8s.pt')
-        self.video_path = 'test-park.mp4'
+        self.model = YOLO('models/pre-trained/yolov8s.pt')
+        self.video_path = video_path
+        self.segmentation_path = segmentation_path
         self.frame_size = (1020, 500)
         self.frame_skip = 3
 
         self.cap = cv2.VideoCapture(self.video_path)
         self.polylines = []
-        self.area_names = []
         self.class_list = []
-
         self.parking_status = {}
 
         self._load_files()
 
     def _load_files(self):
         """Load pickle file for parking segmentation and COCO class names."""
-        with open('parkingsegment', 'rb') as f:
+        with open(self.segmentation_path, 'rb') as f:
             data = pickle.load(f)
             self.polylines = data['polylines']
-            self.area_names = data['area_names']
+            for area_name in data['area_names']:
+                if area_name not in ParkingDetectionModel.area_names:
+                    ParkingDetectionModel.area_names.append(area_name)
 
-        with open('coco.txt', 'r') as f:
+        with open('models/pre-trained/coco.txt', 'r') as f:
             self.class_list = f.read().split('\n')
 
-        for area_name in self.area_names:
+        for area_name in ParkingDetectionModel.area_names:
             self.parking_status[area_name] = "Empty"
-
-    def open_video(self):
-        """Open the video file for reading."""
-        self.cap = cv2.VideoCapture(self.video_path)
 
     def process_frame(self, frame):
         """Process a video frame and update parking area statuses."""
+        if frame is None:
+            return None  # Return None if the frame is invalid
+
         frame = cv2.resize(frame, self.frame_size)
         results = self.model.predict(frame)
 
@@ -55,7 +58,6 @@ class ParkingDetectionModel:
 
             if 'motorcycle' in class_name:
                 motorcycles_positions.append([int((x1 + x2) / 2), int((y1 + y2) / 2)])
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
 
         for i, polyline in enumerate(self.polylines):
             is_filled = False
@@ -65,19 +67,12 @@ class ParkingDetectionModel:
                     break
 
             status = "Filled" if is_filled else "Empty"
-            self.parking_status[self.area_names[i]] = status
-
-            color = (0, 0, 255) if is_filled else (0, 255, 0)
-            cv2.polylines(frame, [polyline], True, color, 2)
-            cvzone.putTextRect(frame, f'{self.area_names[i]}', tuple(polyline[0]), 1, 1)
-
-        return frame
+            self.parking_status[ParkingDetectionModel.area_names[i]] = status
 
     def run(self, update_callback):
         """Read a video frame, process it, and call the update callback."""
         ret, frame = self.cap.read()
 
-        processed_frame = self.process_frame(frame)
-        update_callback(processed_frame, self.parking_status)
+        self.process_frame(frame)
+        update_callback(self.parking_status)
         self.cap.release()
-        

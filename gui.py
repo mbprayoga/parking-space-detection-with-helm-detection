@@ -2,28 +2,30 @@ import customtkinter as ctk
 from PIL import Image
 import cv2
 import threading
+from natsort import natsorted
+
+from helm import HelmetDetection
+from park import ParkingDetectionModel
 
 class ParkingDetectionGUI:
-    def __init__(self, model_interface, helmet_model):
-        self.model_interface = model_interface
-        self.helmet_model = helmet_model  # Pass the initialized helmet model to the GUI
+    def __init__(self):
+        self.parking_model1 = ParkingDetectionModel('test-park.mp4', 'segment/segment-1')
+        self.parking_model2 = ParkingDetectionModel('test-park.mp4', 'segment/segment-2')
+        self.parking_model3 = ParkingDetectionModel('test-park.mp4', 'segment/segment-3')
+        
+        self.helmet_model = HelmetDetection('models/nano/best.onnx', 0.5, 0.5)
 
         self.image_source1 = "test-image1.png"
         self.image_source2 = "test-image2.png"
         
-        # Set the appearance mode to light
         ctk.set_appearance_mode("light")
 
-        # Initialize CustomTkinter GUI
         self.app = ctk.CTk()
         self.app.title("Parking and Helmet Detection System")
         self.app.state('zoomed')
         
-
-        # Set the geometry to cover the whole screen
         self.app.geometry("1024x600")
 
-        # Frames
         self.left_frame = ctk.CTkFrame(self.app, width=360, height=360, fg_color="transparent")
         self.left_frame.pack(side="left", padx=0, pady=0)
 
@@ -42,7 +44,6 @@ class ParkingDetectionGUI:
         self.message_label = ctk.CTkLabel(self.video_frame, text="", anchor="center", fg_color="transparent", corner_radius=8)
         self.message_label.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Frame for additional image previews
         self.image_frame = ctk.CTkFrame(self.left_frame, fg_color="transparent")
         self.image_frame.pack(fill="both", expand=True, padx=0, pady=0)
         
@@ -58,13 +59,12 @@ class ParkingDetectionGUI:
         self.image_label2 = ctk.CTkLabel(self.image_frame2, text="", anchor="center")
         self.image_label2.pack(side="left", fill="both", expand=True, padx=10, pady=10)
 
-        # Parking area labels
         self.area_labels = {}
         
-        self.parking_thread = None
-        self.helmet_thread = None
-
-        # Bind the close event to the cleanup method
+        self.initialize_area_labels(self.parking_model2.area_names)
+        
+        print(self.parking_model1.area_names)
+        
         self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def initialize_area_labels(self, area_names):
@@ -72,7 +72,10 @@ class ParkingDetectionGUI:
         row = 0
         col = 0
         last_area = "A"
-        for area_name in area_names:
+        
+        sorted_area_names = natsorted(area_names)
+        
+        for area_name in sorted_area_names:
             vpad = (0, 5)        
             label = ctk.CTkLabel(
                 self.area_labels_frame, 
@@ -107,7 +110,6 @@ class ParkingDetectionGUI:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(frame)
         
-        # Convert to CTkImage (instead of ImageTk.PhotoImage)
         ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(360, 360))
         
         for result in results:
@@ -116,53 +118,46 @@ class ParkingDetectionGUI:
             if result['class_name'] == 'unhelmeted':
                 message_label.configure(text="Gunakan Kelengkapan Berkendara!", text_color="#ffffff", font=("Poppins", 14, "bold"), fg_color="#ff0f0f")
         
-        # Update the label with the new CTkImage object
         label.configure(image=ctk_img)
         label.pack(padx=0, pady=0)
-        label.imgtk = ctk_img  # Store a reference to avoid garbage collection
+        label.imgtk = ctk_img  
 
     def update_image_frame(self, image_path, label):
         """Display an image on the GUI."""
         img = Image.open(image_path)
         ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(160, 100))
         
-        # Update the label with the new CTkImage object
         label.configure(image=ctk_img)
         label.pack(side="left", padx=0, pady=0)
-        label.imgtk = ctk_img  # Store a reference to avoid garbage collection
-    
-    def run(self):
-        """Run the GUI application."""
-        def update_parking(frame, parking_status):
-            for area_name, status in parking_status.items():
-                self.update_area_status(area_name, status)
-
-        def update_helmet(frame, results):
-            self.update_video_frame(frame, results, self.video_label_helmet, self.message_label)
-
-        # Display images in the labels
-        self.update_image_frame(self.image_source1, self.image_label1)
-        self.update_image_frame(self.image_source2, self.image_label2)
-        
-        # Start the parking detection and helmet detection threads
-        self.parking_thread = threading.Thread(target=self.model_interface.run, args=(update_parking,), name="ParkingDetectionModel")
-        self.helmet_thread = threading.Thread(target=self.helmet_model.run, args=(update_helmet,), name="HelmetDetection")
-        
-        self.helmet_thread.setDaemon(True)
-
-        self.parking_thread.start()
-        self.helmet_thread.start()
-
-        self.app.mainloop()
+        label.imgtk = ctk_img 
 
     def on_closing(self):
         """Handle cleanup and proper termination of threads when the application is closed."""
         
         if self.helmet_thread is not None:
             self.helmet_thread.join(timeout=2)
-            
-        if self.parking_thread is not None:
-            self.parking_thread.join(timeout=2)
         
         self.app.destroy()
+        
+    def run(self):
+        """Run the GUI application."""
+        def update_parking(parking_status):
+            for area_name, status in parking_status.items():
+                self.update_area_status(area_name, status)
+
+        def update_helmet(frame, results):
+            self.update_video_frame(frame, results, self.video_label_helmet, self.message_label)
+
+        self.update_image_frame(self.image_source1, self.image_label1)
+        self.update_image_frame(self.image_source2, self.image_label2)
+    
+        self.helmet_thread = threading.Thread(target=self.helmet_model.run, args=(update_helmet,), name="HelmetDetection")
+        self.helmet_thread.daemon = True
+        self.helmet_thread.start()
+
+        self.app.mainloop()
+        
+if __name__ == "__main__":
+    gui = ParkingDetectionGUI()
+    gui.run()
         
