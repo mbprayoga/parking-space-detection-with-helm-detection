@@ -5,6 +5,7 @@ from ultralytics import YOLO
 import cvzone
 import logging
 import os
+import threading
 
 class ParkingDetectionModel:
     area_names = [] 
@@ -16,9 +17,8 @@ class ParkingDetectionModel:
         self.video_path = video_path
         self.segmentation_path = segmentation_path
         self.frame_size = (1020, 500)
-        self.frame_skip = 3
 
-        self.cap = cv2.VideoCapture(self.video_path)
+        self.cap = None
         self.polylines = []
         self.class_list = []
         self.parking_status = {}
@@ -71,6 +71,7 @@ class ParkingDetectionModel:
 
     def run(self, update_callback):
         """Read a video frame, process it, and call the update callback."""
+        self.cap = cv2.VideoCapture(self.video_path)
         ret, frame = self.cap.read()
 
         self.process_frame(frame)
