@@ -47,22 +47,42 @@ class ParkingDetectionModel:
 
         frame = cv2.resize(frame, self.frame_size)
         results = self.model.predict(frame)
-
         detections = pd.DataFrame(results[0].boxes.data).astype("float")
         motorcycles_positions = []
 
+        # Get motorcycle positions and draw rectangles
         for _, row in detections.iterrows():
             x1, y1, x2, y2 = map(int, row[:4])
             class_id = int(row[5])
             class_name = self.class_list[class_id]
 
             if 'motorcycle' in class_name:
-                motorcycles_positions.append([int((x1 + x2) / 2), int((y1 + y2) / 2)])
+                cx = int((x1 + x2) / 2)
+                cy = int((y1 + y2) / 2)
+                motorcycles_positions.append([cx, cy])
 
+        # Check each parking segment with the new plus sign logic
         for i, polyline in enumerate(self.polylines):
             is_filled = False
+            
             for cx, cy in motorcycles_positions:
-                if cv2.pointPolygonTest(polyline, (cx, cy), False) >= 0:
+                plus_size = 15
+                # Create points for the plus symbol
+                plus_points = [
+                    (cx - plus_size, cy),  # Left
+                    (cx + plus_size, cy),  # Right
+                    (cx, cy - plus_size),  # Top
+                    (cx, cy + plus_size)   # Bottom
+                ]
+                
+                # Check if any part of the plus intersects with the polygon
+                center_in_poly = cv2.pointPolygonTest(polyline, (cx, cy), False) >= 0
+                left_in_poly = cv2.pointPolygonTest(polyline, plus_points[0], False) >= 0
+                right_in_poly = cv2.pointPolygonTest(polyline, plus_points[1], False) >= 0
+                top_in_poly = cv2.pointPolygonTest(polyline, plus_points[2], False) >= 0
+                bottom_in_poly = cv2.pointPolygonTest(polyline, plus_points[3], False) >= 0
+
+                if any([center_in_poly, left_in_poly, right_in_poly, top_in_poly, bottom_in_poly]):
                     is_filled = True
                     break
 
