@@ -50,7 +50,6 @@ class ParkingDetectionGUI:
         
         self.message_label = ctk.CTkLabel(self.image_frame, text="", anchor="center", fg_color="transparent", width=340, height=50, corner_radius=8)
         self.message_label.pack(padx=10, pady=10)  
-        self.message_label.pack_forget()
 
         self.warning_active = False
         self.warning_duration = 2
