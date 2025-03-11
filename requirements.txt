@@ -1,0 +1,11 @@
+pillow
+numpy<2.0.0
+setproctitle
+opencv-python-headless
+ultralytics
+customtkinter
+pandas
+onvif_zeep
+natsort
+pyserial
+git+https://github.com/hailo-ai/hailo-apps-infra.git
