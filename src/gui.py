@@ -20,8 +20,8 @@ class ParkingDetectionGUI:
         
         self.helmet_model = HelmetDetection(self.update_video_frame)
 
-        self.camera1 = Camera("NW", "192.168.183.200", 8899, "", "", 19, 26) 
-        self.camera2 = Camera("SE", "192.168.183.241", 8899, "", "", 19, 24)
+        # self.camera1 = Camera("NW", "192.168.183.200", 8899, "", "", 19, 26) 
+        # self.camera2 = Camera("SE", "192.168.183.241", 8899, "", "", 19, 24)
         
         ctk.set_appearance_mode("light")
 
@@ -150,24 +150,24 @@ class ParkingDetectionGUI:
             for area_name, status in ParkingDetectionModel.areas.items():
                 self.update_area_status(area_name, status)
 
-        # self.parking_model1.run(update_parking)
-        # self.parking_model2.run(update_parking)
-        # self.parking_model3.run(update_parking)
-        # self.parking_model4.run(update_parking)
-        # self.parking_model5.run(update_parking)
-        # self.parking_model6.run(update_parking)
+        self.parking_model1.run(update_parking)
+        self.parking_model2.run(update_parking)
+        self.parking_model3.run(update_parking)
+        self.parking_model4.run(update_parking)
+        self.parking_model5.run(update_parking)
+        self.parking_model6.run(update_parking)
             
-        self.camera_thread1 = threading.Thread(
-            target=self.camera1.startup, 
-            args=(self.parking_model1.run, self.parking_model2.run, self.parking_model3.run, update_parking,), 
-            daemon=True,
-            name="Camera1") 
+        # self.camera_thread1 = threading.Thread(
+        #     target=self.camera1.startup, 
+        #     args=(self.parking_model1.run, self.parking_model2.run, self.parking_model3.run, update_parking,), 
+        #     daemon=True,
+        #     name="Camera1") 
         
-        self.camera_thread2 = threading.Thread(
-            target=self.camera2.startup, 
-            args=(self.parking_model4.run, self.parking_model5.run, self.parking_model6.run, update_parking,), 
-            daemon=True,
-            name="Camera2") 
+        # self.camera_thread2 = threading.Thread(
+        #     target=self.camera2.startup, 
+        #     args=(self.parking_model4.run, self.parking_model5.run, self.parking_model6.run, update_parking,), 
+        #     daemon=True,
+        #     name="Camera2") 
 
         self.helmet_thread = threading.Thread(
             target=self.helmet_model.app.run, 
@@ -175,8 +175,8 @@ class ParkingDetectionGUI:
             name="HelmetDetection")
         
     
-        self.camera_thread1.start() 
-        self.camera_thread2.start() 
+        # self.camera_thread1.start() 
+        # self.camera_thread2.start() 
         self.helmet_thread.start()
 
         self.app.mainloop()
